@@ -1,35 +1,35 @@
 package io.kaizensolutions.virgil.examples
 
-import kyo.*
 import com.datastax.oss.driver.api.core.CqlSession
 import io.kaizensolutions.virgil.*
-import io.kaizensolutions.virgil.cql.*
 import io.kaizensolutions.virgil.codecs.*
+import io.kaizensolutions.virgil.cql.*
+import kyo.*
+
+import scala.language.implicitConversions
 
 /**
  * Create the virgil keyspace
  * ```cql
- * CREATE KEYSPACE IF NOT EXISTS virgil
- * WITH REPLICATION = {
- * 'class': 'SimpleStrategy',
- * 'replication_factor': 1
- * };
- * USE virgil;
+ * CREATE KEYSPACE IF NOT EXISTS virgil WITH REPLICATION = { 'class': 'SimpleStrategy', 'replication_factor': 1 };
  * ```
  *
  * Create the example table
  * ```cql
- * CREATE TABLE IF NOT EXISTS example (
- * id INT PRIMARY KEY,
- * info TEXT
- * );
+ * USE virgil;
+ * CREATE TABLE IF NOT EXISTS example (id INT PRIMARY KEY, info TEXT);
  * ```
  */
 object Showcase extends KyoApp:
   run:
     val program: Unit < (Envs[CQLExecutor] & Fibers) =
-      val insertAlice = cql"INSERT INTO example (id, info) VALUES (1, 'Alice')".mutation
-      val insertBob   = cql"INSERT INTO example (id, info) VALUES (2, 'Bob')".mutation
+      val one   = 1
+      val two   = 2
+      val Alice = "Alice"
+      val Bob   = "Bob"
+
+      val insertAlice = cql"INSERT INTO example (id, info) VALUES ($one, $Alice)".mutation
+      val insertBob   = cql"INSERT INTO example (id, info) VALUES ($two, $Bob)".mutation
       val query       = cql"SELECT id, info FROM example".query[ExampleRow]
       for
         _        <- CQLExecutor.executeMutation(insertAlice)

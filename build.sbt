@@ -11,7 +11,8 @@ inThisBuild {
       "-unchecked",
       "-deprecation",
       "-Wvalue-discard",
-      "-Wunused:all"
+      "-Wunused:all",
+      "-language:implicitConversions"
     ),
     githubWorkflowJavaVersions := List(
       JavaSpec.temurin("17"),
