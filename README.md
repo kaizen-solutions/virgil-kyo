@@ -5,6 +5,7 @@ _Virgil is a functional Cassandra client built using Kyo, Magnolia and the Datas
 This project allows you to use [Virgil, the Cassandra client](https://github.com/kaizen-solutions/virgil) with [Kyo, the next generation toolkit for Scala 3](https://github.com/getkyo/kyo)
 
 ![Build Status](https://github.com/kaizen-solutions/virgil-kyo/actions/workflows/ci.yml/badge.svg)
+![Maven Central Version](https://img.shields.io/maven-central/v/io.kaizen-solutions/virgil-kyo_3)
 
 ## Quickstart
 
