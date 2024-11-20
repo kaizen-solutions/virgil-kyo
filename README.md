@@ -23,7 +23,7 @@ import io.kaizensolutions.virgil.codecs.*
 import io.kaizensolutions.virgil.cql.*
 import kyo.*
 
-val program: Unit < (Envs[CQLExecutor] & Fibers) =
+val program: Unit < (Env[CQLExecutor] & Async) =
   val one = 1
   val two = 2
   val Alice = "Alice"
@@ -35,6 +35,6 @@ val program: Unit < (Envs[CQLExecutor] & Fibers) =
   for
     _                 <- CQLExecutor.executeMutation(insertAlice)
     _                 <- CQLExecutor.executeMutation(insertBob)
-    (aliceAndBob, _)  <- CQLExecutor.execute(query).runSeq
+    (aliceAndBob, _)  <- CQLExecutor.execute(query).run
   yield ()
 ```
