@@ -1,5 +1,5 @@
 inThisBuild {
-  val scala3 = "3.4.2"
+  val scala3 = "3.5.1"
 
   List(
     scalaVersion       := scala3,
@@ -11,6 +11,8 @@ inThisBuild {
       "-unchecked",
       "-deprecation",
       "-Wvalue-discard",
+      "-Wnonunit-statement",
+      "-Wconf:msg=(discarded.*value|pure.*statement):error",
       "-Wunused:all",
       "-language:implicitConversions"
     ),
@@ -66,7 +68,7 @@ lazy val root =
     .settings(
       name := "virgil-kyo",
       libraryDependencies ++= Seq(
-        "io.getkyo"           %% "kyo-core"    % "0.10.1",
+        "io.getkyo"           %% "kyo-core"    % "0.14.1",
         "io.kaizen-solutions" %% "virgil-core" % "1.1.0"
       )
     )
