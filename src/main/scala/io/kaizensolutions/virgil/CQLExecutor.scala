@@ -8,41 +8,31 @@ import io.kaizensolutions.virgil.internal.Proofs.*
 import kyo.*
 
 trait CQLExecutor:
-  def execute[A: Flat](in: CQL[A])(using Tag[A]): Stream[Unit, A, Fibers]
+  def execute[A: Tag](in: CQL[A]): Stream[A, Async]
 
-  def executeMutation(in: CQL[MutationResult]): MutationResult < Fibers
+  def executeMutation(in: CQL[MutationResult]): MutationResult < Async
 
-  def executePage[A](in: CQL[A], pageState: Option[PageState])(using ev: A =:!= MutationResult): Paged[A] < Fibers
+  def executePage[A](in: CQL[A], pageState: Option[PageState])(using ev: A =:!= MutationResult): Paged[A] < Async
 
-  def metrics: DriverMetrics < Options
+  def metrics: DriverMetrics < Abort[Absent]
 
 object CQLExecutor:
-  def apply(builder: => CqlSessionBuilder): CQLExecutor < Resources =
-    val acquire: CqlSession < Fibers = Fibers.fromCompletionStage(builder.buildAsync())
-    val release: CqlSession => Unit < Fibers = (session: CqlSession) =>
-      Fibers.fromCompletionStage(session.closeAsync()).unit
+  def apply(builder: => CqlSessionBuilder): CQLExecutor < (Resource & Async) =
+    val acquire: CqlSession < Async = Fiber.fromCompletionStage(builder.buildAsync())
+    val release: CqlSession => Unit < Async = (session: CqlSession) =>
+      Fiber.fromCompletionStage(session.closeAsync()).unit
 
-    Resources.acquireRelease(acquire)(release).map(CQLExecutorKyo(_))
+    Resource.acquireRelease(acquire)(release).map(CQLExecutorKyo(_))
 
-  def execute[A: Flat](in: CQL[A])(using Tag[A]): Stream[Unit, A, Envs[CQLExecutor] & Fibers] =
-    Streams.initSource[A][Unit, Envs[CQLExecutor] & Fibers]:
-      Envs
-        .get[CQLExecutor]
-        .map(_.execute(in).get)
+  def execute[A: Tag](in: CQL[A]): Stream[A, Env[CQLExecutor] & Async] =
+    Stream[A, Env[CQLExecutor] & Async]:
+      Env.use[CQLExecutor](_.execute(in).emit)
 
-  def executeMutation(in: CQL[MutationResult]): MutationResult < (Envs[CQLExecutor] & Fibers) =
-    Envs
-      .get[CQLExecutor]
-      .map(_.executeMutation(in))
+  def executeMutation(in: CQL[MutationResult]): MutationResult < (Env[CQLExecutor] & Async) =
+    Env.use[CQLExecutor](_.executeMutation(in))
 
   def executePage[A](in: CQL[A], pageState: Option[PageState] = None)(using
     A =:!= MutationResult
-  ): Paged[A] < (Envs[CQLExecutor] & Fibers) =
-    Envs
-      .get[CQLExecutor]
-      .map(_.executePage(in, pageState))
+  ): Paged[A] < (Env[CQLExecutor] & Async) = Env.use[CQLExecutor](_.executePage(in, pageState))
 
-  val metrics: DriverMetrics < (Envs[CQLExecutor] & Options) =
-    Envs
-      .get[CQLExecutor]
-      .map(_.metrics)
+  val metrics: DriverMetrics < (Env[CQLExecutor] & Abort[Absent]) = Env.use[CQLExecutor](_.metrics)

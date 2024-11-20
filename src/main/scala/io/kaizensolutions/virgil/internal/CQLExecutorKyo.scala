@@ -12,27 +12,27 @@ import kyo.*
 import scala.jdk.CollectionConverters.*
 
 final private[virgil] class CQLExecutorKyo(private val session: CqlSession) extends CQLExecutor:
-  override def execute[A: Flat](in: CQL[A])(using Tag[A]): Stream[Unit, A, Fibers] =
+  override def execute[A: Tag](in: CQL[A]): Stream[A, Async] =
     in.cqlType match
       case m: CQLType.Mutation =>
-        val mutation: A < Fibers            = executeMutation(m, in.executionAttributes).asInstanceOf[A < Fibers]
-        val s: Unit < (Fibers & Streams[A]) = mutation.map(m => Chunks.init(m)).map(Streams.emitChunk)
-        Streams.initSource(s)
+        val mutation: MutationResult < Async            = executeMutation(m, in.executionAttributes)
+        val s: Emit.Ack < (Async & Emit[Chunk[A]]) = mutation.map(m => Emit(Chunk(m.asInstanceOf[A])))
+        Stream(s)
 
       case b: CQLType.Batch =>
-        val batch: A < Fibers               = executeBatch(b, in.executionAttributes).asInstanceOf[A < Fibers]
-        val s: Unit < (Fibers & Streams[A]) = batch.map(m => Chunks.init(m)).map(Streams.emitChunk)
-        Streams.initSource(s)
+        val batch: MutationResult < Async               = executeBatch(b, in.executionAttributes)
+        val s: Emit.Ack < (Async & Emit[Chunk[A]]) = batch.map(m => Emit(Chunk(m.asInstanceOf[A])))
+        Stream(s)
 
-      case q @ CQLType.Query(_, _, pullMode) =>
-        pullMode match
+      case q: CQLType.Query[A] @unchecked =>
+        q.pullMode match
           case PullMode.TakeUpto(n) =>
-            executeGeneralQuery(q.asInstanceOf[CQLType.Query[A]], in.executionAttributes).take(n.toInt)
+            executeGeneralQuery(q, in.executionAttributes).take(n.toInt)
 
           case PullMode.All =>
-            executeGeneralQuery(q.asInstanceOf[CQLType.Query[A]], in.executionAttributes)
+            executeGeneralQuery(q, in.executionAttributes)
 
-  override def executeMutation(in: CQL[MutationResult]): MutationResult < Fibers = in.cqlType match
+  override def executeMutation(in: CQL[MutationResult]): MutationResult < Async = in.cqlType match
     case mutation: CQLType.Mutation =>
       executeMutation(mutation, in.executionAttributes)
 
@@ -44,30 +44,27 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
 
   override def executePage[A](in: CQL[A], pageState: Option[PageState])(using
     ev: A =:!= MutationResult
-  ): Paged[A] < Fibers = in.cqlType match
+  ): Paged[A] < Async = in.cqlType match
     case _: CQLType.Mutation =>
       sys.error("Mutations cannot be used with page queries")
 
     case CQLType.Batch(_, _) =>
       sys.error("Batch Mutations cannot be used with page queries")
 
-    case q @ CQLType.Query(_, _, _) =>
-      fetchSinglePage(q, pageState, in.executionAttributes).asInstanceOf[Paged[A] < Fibers]
+    case q: CQLType.Query[A] @unchecked => fetchSinglePage(q, pageState, in.executionAttributes)
 
-  override def metrics: DriverMetrics < Options =
-    val optMetrics = session.getMetrics()
-    if optMetrics.isPresent then Options(optMetrics.get())
-    else Options.empty
+  override def metrics: DriverMetrics < Abort[Absent] =
+    Abort.get(Maybe(session.getMetrics().orElse(null)))
 
-  private def executeMutation(m: CQLType.Mutation, config: ExecutionAttributes): MutationResult < Fibers =
+  private def executeMutation(m: CQLType.Mutation, config: ExecutionAttributes): MutationResult < Async =
     for
       boundStatement <- buildMutation(m, config)
       result         <- executeAction(boundStatement)
     yield MutationResult.make(result.wasApplied())
 
-  private def executeBatch(m: CQLType.Batch, config: ExecutionAttributes): MutationResult < Fibers =
-    Fibers
-      .parallel(m.mutations.map(buildMutation(_)))
+  private def executeBatch(m: CQLType.Batch, config: ExecutionAttributes): MutationResult < Async =
+    Async
+      .parallelUnbounded(m.mutations.map(buildMutation(_)))
       .map: statements =>
         val builder = BatchStatement
           .builder(m.batchType.toDriver)
@@ -76,34 +73,34 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
       .map(executeAction)
       .map(r => MutationResult.make(r.wasApplied()))
 
-  private def executeGeneralQuery[Output: Flat](
+  private def executeGeneralQuery[Output: Tag](
     input: CQLType.Query[Output],
     config: ExecutionAttributes
-  )(using Tag[Output]): Stream[Unit, Output, Fibers] =
+  ): Stream[Output, Async] =
     val (queryString, bindMarkers) = CqlStatementRenderer.render(input)
     val reader                     = input.reader
     val statement                  = buildStatement(queryString, bindMarkers, config)
-    val out                        = statement.map(s => select(s).transform(reader.decode))
-    Streams.initSource[Output][Unit, Fibers](out.map(_.get))
+    val out                        = statement.map(s => select(s).map(reader.decode))
+    Stream[Output, Async](out.map(_.emit))
 
-  private def select(query: Statement[?]): Stream[Unit, Row, Fibers] =
-    def go(rs: AsyncResultSet): Unit < (Streams[Row] & Fibers) =
-      val next =
-        if rs.hasMorePages() then Fibers.fromCompletionStage(rs.fetchNextPage()).map(go)
-        else ()
+  private def select(query: Statement[?]): Stream[Row, Async] =
+    def go(rs: AsyncResultSet): Emit.Ack < (Emit[Chunk[Row]] & Async) =
+      val next: Emit.Ack < (Emit[Chunk[Row]] & Async) =
+        if rs.hasMorePages() then Fiber.fromCompletionStage(rs.fetchNextPage()).map(go)
+        else Emit.Ack.Stop
 
       if rs.remaining() > 0 then
-        val chunk = Chunks.initSeq(rs.currentPage().asScala.toSeq)
-        Streams.emitChunk(chunk).map(_ => next)
+        val chunk = Chunk.from(rs.currentPage().asScala.toArray)
+        Emit.andMap(chunk)(_ => next)
       else next
 
-    Streams.initSource[Row][Unit, Fibers](Fibers.fromCompletionStage(session.executeAsync(query)).map(go))
+    Stream[Row, Async](Fiber.fromCompletionStage(session.executeAsync(query)).map(go))
 
   private def fetchSinglePage[A](
     q: CQLType.Query[A],
     pageState: Option[PageState],
     attr: ExecutionAttributes
-  ): Paged[A] < Fibers =
+  ): Paged[A] < Async =
     val (queryString, bindMarkers) = CqlStatementRenderer.render(q)
     for
       boundStatement        <- buildStatement(queryString, bindMarkers, attr)
@@ -113,21 +110,21 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
       rp                    <- selectPage(boundStatementWithPage)
       (results, nextPage)    = rp
       chunksToOutput         = results.map(reader.decode)
-    yield Paged(chunksToOutput.pure, nextPage)
+    yield Paged(chunksToOutput, nextPage)
 
   private def buildMutation(
     in: CQLType.Mutation,
     attr: ExecutionAttributes = ExecutionAttributes.default
-  ): BatchableStatement[?] < Fibers =
+  ): BatchableStatement[?] < Async =
     val (queryString, bindMarkers) = CqlStatementRenderer.render(in)
-    if bindMarkers.isEmpty then IOs(SimpleStatement.newInstance(queryString))
+    if bindMarkers.isEmpty then IO(SimpleStatement.newInstance(queryString))
     else buildStatement(queryString, bindMarkers, attr)
 
   private def buildStatement(
     queryString: String,
     columns: BindMarkers,
     config: ExecutionAttributes
-  ): BoundStatement < Fibers =
+  ): BoundStatement < Async =
     prepare(queryString).map: ps =>
       val builder = ps.boundStatementBuilder()
       val boundColumns = columns.underlying.foldLeft(builder):
@@ -141,16 +138,16 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
       val result = config.configure(boundColumns)
       result.build()
 
-  private def selectPage(queryConfiguredWithPageState: Statement[?]): (Chunk[Row], Option[PageState]) < Fibers =
+  private def selectPage(queryConfiguredWithPageState: Statement[?]): (Chunk[Row], Option[PageState]) < Async =
     executeAction(queryConfiguredWithPageState).map: rs =>
-      val currentRows: Chunk[Row] = Chunks.initSeq(rs.currentPage().asScala.toSeq)
+      val currentRows: Chunk[Row] = Chunk.from(rs.currentPage().asScala.toArray)
       if rs.hasMorePages() then
         val pageState = PageState.fromDriver(rs.getExecutionInfo().getSafePagingState())
         currentRows -> Option(pageState)
       else currentRows -> None
 
-  private def prepare(query: String): PreparedStatement < Fibers =
-    Fibers.fromCompletionStage(session.prepareAsync(query))
+  private def prepare(query: String): PreparedStatement < Async =
+    Fiber.fromCompletionStage(session.prepareAsync(query))
 
-  private def executeAction(query: Statement[?]): AsyncResultSet < Fibers =
-    Fibers.fromCompletionStage(session.executeAsync(query))
+  private def executeAction(query: Statement[?]): AsyncResultSet < Async =
+    Fiber.fromCompletionStage(session.executeAsync(query))

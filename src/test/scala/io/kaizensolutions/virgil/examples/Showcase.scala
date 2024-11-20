@@ -22,7 +22,7 @@ import scala.language.implicitConversions
  */
 object Showcase extends KyoApp:
   run:
-    val program: Unit < (Envs[CQLExecutor] & Fibers) =
+    val program: Unit < (Env[CQLExecutor] & Async) =
       val one   = 1
       val two   = 2
       val Alice = "Alice"
@@ -34,16 +34,15 @@ object Showcase extends KyoApp:
       for
         _        <- CQLExecutor.executeMutation(insertAlice)
         _        <- CQLExecutor.executeMutation(insertBob)
-        res      <- CQLExecutor.execute(query).runSeq
-        (data, _) = res
-        _        <- IOs(println(data))
+        data      <- CQLExecutor.execute(query).run
+        _        <- IO(println(data))
         page     <- CQLExecutor.executePage(query)
-        _        <- IOs(println(page.data))
+        _        <- IO(println(page.data))
       yield ()
 
     for
       executor <- CQLExecutor(CqlSession.builder().withKeyspace("virgil"))
-      result   <- Envs.run(executor)(program)
+      result   <- Env.run(executor)(program)
     yield result
 
 final case class ExampleRow(id: Int, info: String)
