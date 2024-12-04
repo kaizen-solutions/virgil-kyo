@@ -7,6 +7,7 @@ import io.kaizensolutions.virgil.cql.*
 import kyo.*
 
 import scala.language.implicitConversions
+import io.kaizensolutions.virgil.configuration.ExecutionAttributes
 
 /**
  * Create the virgil keyspace
@@ -30,14 +31,27 @@ object Showcase extends KyoApp:
 
       val insertAlice = cql"INSERT INTO example (id, info) VALUES ($one, $Alice)".mutation
       val insertBob   = cql"INSERT INTO example (id, info) VALUES ($two, $Bob)".mutation
-      val query       = cql"SELECT id, info FROM example".query[ExampleRow]
+      val insertValues: Stream[MutationResult, Env[CQLExecutor] & Async] =
+        Stream
+          .range(1, 1_000)
+          .map: i =>
+            CQLExecutor.executeMutation:
+              cql"INSERT INTO example (id, info) VALUES ($i, ${i.toString()})".mutation
+
+      val query = cql"SELECT id, info FROM example".query[ExampleRow]
       for
-        _        <- CQLExecutor.executeMutation(insertAlice)
-        _        <- CQLExecutor.executeMutation(insertBob)
-        data      <- CQLExecutor.execute(query).run
-        _        <- IO(println(data))
-        page     <- CQLExecutor.executePage(query)
-        _        <- IO(println(page.data))
+        _    <- CQLExecutor.executeMutation(insertAlice)
+        _    <- CQLExecutor.executeMutation(insertBob)
+        _    <- insertValues.runDiscard
+        data <- CQLExecutor.execute(query.take(10)).run
+        _    <- IO(println(data))
+        _ <- CQLExecutor
+               .execute(query)
+               .mapChunk: chunk =>
+                 IO(println(chunk.size)).map(_ => chunk)
+               .runDiscard
+        page <- CQLExecutor.executePage(query.withAttributes(ExecutionAttributes.default.withPageSize(4)))
+        _    <- IO(println(page))
       yield ()
 
     for

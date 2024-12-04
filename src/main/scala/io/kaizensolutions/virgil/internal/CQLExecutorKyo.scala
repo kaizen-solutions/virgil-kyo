@@ -10,17 +10,18 @@ import io.kaizensolutions.virgil.internal.Proofs.*
 import kyo.*
 
 import scala.jdk.CollectionConverters.*
+import kyo.kernel.ArrowEffect
 
 final private[virgil] class CQLExecutorKyo(private val session: CqlSession) extends CQLExecutor:
   override def execute[A: Tag](in: CQL[A]): Stream[A, Async] =
     in.cqlType match
       case m: CQLType.Mutation =>
-        val mutation: MutationResult < Async            = executeMutation(m, in.executionAttributes)
+        val mutation: MutationResult < Async       = executeMutation(m, in.executionAttributes)
         val s: Emit.Ack < (Async & Emit[Chunk[A]]) = mutation.map(m => Emit(Chunk(m.asInstanceOf[A])))
         Stream(s)
 
       case b: CQLType.Batch =>
-        val batch: MutationResult < Async               = executeBatch(b, in.executionAttributes)
+        val batch: MutationResult < Async          = executeBatch(b, in.executionAttributes)
         val s: Emit.Ack < (Async & Emit[Chunk[A]]) = batch.map(m => Emit(Chunk(m.asInstanceOf[A])))
         Stream(s)
 
@@ -86,12 +87,14 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
   private def select(query: Statement[?]): Stream[Row, Async] =
     def go(rs: AsyncResultSet): Emit.Ack < (Emit[Chunk[Row]] & Async) =
       val next: Emit.Ack < (Emit[Chunk[Row]] & Async) =
-        if rs.hasMorePages() then Fiber.fromCompletionStage(rs.fetchNextPage()).map(go)
-        else Emit.Ack.Stop
+        IO:
+          if rs.hasMorePages() then Fiber.fromCompletionStage(rs.fetchNextPage()).map(go)
+          else Emit.Ack.Stop
 
       if rs.remaining() > 0 then
         val chunk = Chunk.from(rs.currentPage().asScala.toArray)
-        Emit.andMap(chunk)(_ => next)
+        Emit.andMap(chunk): _ => 
+          next
       else next
 
     Stream[Row, Async](Fiber.fromCompletionStage(session.executeAsync(query)).map(go))

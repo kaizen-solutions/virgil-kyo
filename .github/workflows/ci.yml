@@ -23,7 +23,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [3.5.1]
+        scala: [3.5.2]
         java: [temurin@17, temurin@21]
     runs-on: ${{ matrix.os }}
     steps:
@@ -48,6 +48,9 @@ jobs:
           java-version: 21
           cache: sbt
 
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
       - name: Check that workflows are up to date
         run: sbt '++ ${{ matrix.scala }}' githubWorkflowCheck
 
@@ -70,7 +73,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        scala: [3.5.1]
+        scala: [3.5.2]
         java: [temurin@17]
     runs-on: ${{ matrix.os }}
     steps:
@@ -95,12 +98,15 @@ jobs:
           java-version: 21
           cache: sbt
 
-      - name: Download target directories (3.5.1)
+      - name: Setup sbt
+        uses: sbt/setup-sbt@v1
+
+      - name: Download target directories (3.5.2)
         uses: actions/download-artifact@v4
         with:
-          name: target-${{ matrix.os }}-3.5.1-${{ matrix.java }}
+          name: target-${{ matrix.os }}-3.5.2-${{ matrix.java }}
 
-      - name: Inflate target directories (3.5.1)
+      - name: Inflate target directories (3.5.2)
         run: |
           tar xf targets.tar
           rm targets.tar
