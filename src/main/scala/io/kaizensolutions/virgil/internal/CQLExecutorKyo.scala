@@ -8,9 +8,9 @@ import io.kaizensolutions.virgil.configuration.*
 import io.kaizensolutions.virgil.internal.*
 import io.kaizensolutions.virgil.internal.Proofs.*
 import kyo.*
+import kyo.kernel.ArrowEffect
 
 import scala.jdk.CollectionConverters.*
-import kyo.kernel.ArrowEffect
 
 final private[virgil] class CQLExecutorKyo(private val session: CqlSession) extends CQLExecutor:
   override def execute[A: Tag](in: CQL[A]): Stream[A, Async] =
@@ -93,7 +93,7 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
 
       if rs.remaining() > 0 then
         val chunk = Chunk.from(rs.currentPage().asScala.toArray)
-        Emit.andMap(chunk): _ => 
+        Emit.andMap(chunk): _ =>
           next
       else next
 

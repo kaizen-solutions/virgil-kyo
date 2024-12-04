@@ -3,11 +3,11 @@ package io.kaizensolutions.virgil.examples
 import com.datastax.oss.driver.api.core.CqlSession
 import io.kaizensolutions.virgil.*
 import io.kaizensolutions.virgil.codecs.*
+import io.kaizensolutions.virgil.configuration.ExecutionAttributes
 import io.kaizensolutions.virgil.cql.*
 import kyo.*
 
 import scala.language.implicitConversions
-import io.kaizensolutions.virgil.configuration.ExecutionAttributes
 
 /**
  * Create the virgil keyspace
