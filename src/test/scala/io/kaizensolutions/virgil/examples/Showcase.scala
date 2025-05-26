@@ -1,6 +1,6 @@
 package io.kaizensolutions.virgil.examples
 
-import com.datastax.oss.driver.api.core.CqlSession
+import com.datastax.oss.driver.api.core.{CqlSession, CqlSessionBuilder}
 import io.kaizensolutions.virgil.*
 import io.kaizensolutions.virgil.codecs.*
 import io.kaizensolutions.virgil.configuration.ExecutionAttributes
@@ -42,22 +42,32 @@ object Showcase extends KyoApp:
       for
         _    <- CQLExecutor.executeMutation(insertAlice)
         _    <- CQLExecutor.executeMutation(insertBob)
-        _    <- insertValues.runDiscard
+        _    <- insertValues.discard
         data <- CQLExecutor.execute(query.take(10)).run
         _    <- IO(println(data))
         _ <- CQLExecutor
+               .execute(query.withAttributes(ExecutionAttributes.default.withPageSize(128)))
+               .foreachChunk(chunk => IO(println(s"chunk size: ${chunk.size}")))
+        _ <- CQLExecutor
                .execute(query)
-               .mapChunk: chunk =>
-                 IO(println(chunk.size)).map(_ => chunk)
-               .runDiscard
+               .into(Sink.foreachChunk(chunk => IO(println(chunk.size))))
         page <- CQLExecutor.executePage(query.withAttributes(ExecutionAttributes.default.withPageSize(4)))
         _    <- IO(println(page))
+        _ <- CQLExecutor
+               .executePage(query.withAttributes(ExecutionAttributes.default.withPageSize(4)), page.pageState)
+               .map(p => IO(println(p)))
       yield ()
 
-    for
-      executor <- CQLExecutor(CqlSession.builder().withKeyspace("virgil"))
-      result   <- Env.run(executor)(program)
-    yield result
+    val sessionLayer: Layer[CqlSessionBuilder, Any] = Layer {
+      CqlSession.builder().withKeyspace("virgil")
+    }
+
+    val programLayer: Layer[CQLExecutor, Resource & Async] =
+      Layer.init[CQLExecutor](sessionLayer, CQLExecutor.layer)
+
+    Memo.run:
+      Env.runLayer(programLayer):
+        program
 
 final case class ExampleRow(id: Int, info: String)
 object ExampleRow:

@@ -21,8 +21,11 @@ object CQLExecutor:
     val acquire: CqlSession < Async = Fiber.fromCompletionStage(builder.buildAsync())
     val release: CqlSession => Unit < Async = (session: CqlSession) =>
       Fiber.fromCompletionStage(session.closeAsync()).unit
-
     Resource.acquireRelease(acquire)(release).map(CQLExecutorKyo(_))
+
+  val layer: Layer[CQLExecutor, Resource & Async & Env[CqlSessionBuilder]] = Layer {
+    Env.use[CqlSessionBuilder](CQLExecutor(_))
+  }
 
   def execute[A: Tag](in: CQL[A]): Stream[A, Env[CQLExecutor] & Async] =
     Stream[A, Env[CQLExecutor] & Async]:

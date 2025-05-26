@@ -1,5 +1,5 @@
 inThisBuild {
-  val scala3 = "3.5.2"
+  val scala3 = "3.7.0"
 
   List(
     scalaVersion       := scala3,
@@ -46,19 +46,15 @@ inThisBuild {
       )
     ),
     testFrameworks ++= Seq(),
-    semanticdbEnabled      := true,
-    versionScheme          := Some("early-semver"),
-    sonatypeCredentialHost := "s01.oss.sonatype.org",
-    sonatypeProfileName    := "io.kaizen-solutions",
-    sonatypeRepository     := "https://s01.oss.sonatype.org/service/local",
-    licenses               := List("MPL-2.0" -> url("https://www.mozilla.org/en-US/MPL/2.0/")),
-    organization           := "io.kaizen-solutions",
-    organizationName       := "kaizen-solutions",
-    homepage               := Some(url("https://www.kaizen-solutions.io/")),
+    semanticdbEnabled := true,
+    versionScheme     := Some("early-semver"),
+    licenses          := List("MPL-2.0" -> url("https://www.mozilla.org/en-US/MPL/2.0/")),
+    organization      := "io.kaizen-solutions",
+    organizationName  := "kaizen-solutions",
+    homepage          := Some(url("https://www.kaizen-solutions.io/")),
     developers := List(
       Developer("calvinlfer", "Calvin Fernandes", "cal@kaizen-solutions.io", url("https://www.kaizen-solutions.io"))
-    ),
-    sonatypeCredentialHost := "s01.oss.sonatype.org"
+    )
   )
 }
 
@@ -68,7 +64,7 @@ lazy val root =
     .settings(
       name := "virgil-kyo",
       libraryDependencies ++= Seq(
-        "io.getkyo"           %% "kyo-core"    % "0.15.0",
-        "io.kaizen-solutions" %% "virgil-core" % "1.2.2"
+        "io.getkyo"           %% "kyo-core"    % "0.19.0",
+        "io.kaizen-solutions" %% "virgil-core" % "1.2.3"
       )
     )

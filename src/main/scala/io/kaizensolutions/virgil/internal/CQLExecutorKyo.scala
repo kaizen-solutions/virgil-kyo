@@ -8,7 +8,6 @@ import io.kaizensolutions.virgil.configuration.*
 import io.kaizensolutions.virgil.internal.*
 import io.kaizensolutions.virgil.internal.Proofs.*
 import kyo.*
-import kyo.kernel.ArrowEffect
 
 import scala.jdk.CollectionConverters.*
 
@@ -16,13 +15,13 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
   override def execute[A: Tag](in: CQL[A]): Stream[A, Async] =
     in.cqlType match
       case m: CQLType.Mutation =>
-        val mutation: MutationResult < Async       = executeMutation(m, in.executionAttributes)
-        val s: Emit.Ack < (Async & Emit[Chunk[A]]) = mutation.map(m => Emit(Chunk(m.asInstanceOf[A])))
+        val mutation: MutationResult < Async   = executeMutation(m, in.executionAttributes)
+        val s: Unit < (Async & Emit[Chunk[A]]) = mutation.map(m => Emit.value(Chunk(m.asInstanceOf[A])))
         Stream(s)
 
       case b: CQLType.Batch =>
-        val batch: MutationResult < Async          = executeBatch(b, in.executionAttributes)
-        val s: Emit.Ack < (Async & Emit[Chunk[A]]) = batch.map(m => Emit(Chunk(m.asInstanceOf[A])))
+        val batch: MutationResult < Async      = executeBatch(b, in.executionAttributes)
+        val s: Unit < (Async & Emit[Chunk[A]]) = batch.map(m => Emit.value(Chunk(m.asInstanceOf[A])))
         Stream(s)
 
       case q: CQLType.Query[A] @unchecked =>
@@ -44,7 +43,7 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
       sys.error("Cannot perform a query using executeMutation")
 
   override def executePage[A](in: CQL[A], pageState: Option[PageState])(using
-    ev: A =:!= MutationResult
+    A =:!= MutationResult
   ): Paged[A] < Async = in.cqlType match
     case _: CQLType.Mutation =>
       sys.error("Mutations cannot be used with page queries")
@@ -65,7 +64,7 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
 
   private def executeBatch(m: CQLType.Batch, config: ExecutionAttributes): MutationResult < Async =
     Async
-      .parallelUnbounded(m.mutations.map(buildMutation(_)))
+      .collectAll(m.mutations.map(buildMutation(_)))
       .map: statements =>
         val builder = BatchStatement
           .builder(m.batchType.toDriver)
@@ -85,16 +84,15 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
     Stream[Output, Async](out.map(_.emit))
 
   private def select(query: Statement[?]): Stream[Row, Async] =
-    def go(rs: AsyncResultSet): Emit.Ack < (Emit[Chunk[Row]] & Async) =
-      val next: Emit.Ack < (Emit[Chunk[Row]] & Async) =
+    def go(rs: AsyncResultSet): Unit < (Emit[Chunk[Row]] & Async) =
+      val next: Unit < (Emit[Chunk[Row]] & Async) =
         IO:
           if rs.hasMorePages() then Fiber.fromCompletionStage(rs.fetchNextPage()).map(go)
-          else Emit.Ack.Stop
+          else ()
 
       if rs.remaining() > 0 then
-        val chunk = Chunk.from(rs.currentPage().asScala.toArray)
-        Emit.andMap(chunk): _ =>
-          next
+        val chunk: Chunk[Row] = Chunk.from(rs.currentPage().asScala)
+        Emit.value(chunk).andThen(next)
       else next
 
     Stream[Row, Async](Fiber.fromCompletionStage(session.executeAsync(query)).map(go))
