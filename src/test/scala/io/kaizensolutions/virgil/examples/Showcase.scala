@@ -44,25 +44,25 @@ object Showcase extends KyoApp:
         _    <- CQLExecutor.executeMutation(insertBob)
         _    <- insertValues.discard
         data <- CQLExecutor.execute(query.take(10)).run
-        _    <- IO(println(data))
+        _    <- Console.printLine(data)
         _ <- CQLExecutor
                .execute(query.withAttributes(ExecutionAttributes.default.withPageSize(128)))
-               .foreachChunk(chunk => IO(println(s"chunk size: ${chunk.size}")))
+               .foreachChunk(chunk => Console.printLine(s"chunk size: ${chunk.size}"))
         _ <- CQLExecutor
                .execute(query)
-               .into(Sink.foreachChunk(chunk => IO(println(chunk.size))))
+               .into(Sink.foreachChunk(chunk => Console.printLine(chunk.size)))
         page <- CQLExecutor.executePage(query.withAttributes(ExecutionAttributes.default.withPageSize(4)))
-        _    <- IO(println(page))
-        _ <- CQLExecutor
+        _    <- Console.printLine(page)
+        p <- CQLExecutor
                .executePage(query.withAttributes(ExecutionAttributes.default.withPageSize(4)), page.pageState)
-               .map(p => IO(println(p)))
+        _ <- Console.printLine(p)
       yield ()
 
     val sessionLayer: Layer[CqlSessionBuilder, Any] = Layer {
       CqlSession.builder().withKeyspace("virgil")
     }
 
-    val programLayer: Layer[CQLExecutor, Resource & Async] =
+    val programLayer: Layer[CQLExecutor, Scope & Async] =
       Layer.init[CQLExecutor](sessionLayer, CQLExecutor.layer)
 
     Memo.run:

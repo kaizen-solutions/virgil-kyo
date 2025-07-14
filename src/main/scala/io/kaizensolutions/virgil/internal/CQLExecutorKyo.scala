@@ -86,16 +86,16 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
   private def select(query: Statement[?]): Stream[Row, Async] =
     def go(rs: AsyncResultSet): Unit < (Emit[Chunk[Row]] & Async) =
       val next: Unit < (Emit[Chunk[Row]] & Async) =
-        IO:
-          if rs.hasMorePages() then Fiber.fromCompletionStage(rs.fetchNextPage()).map(go)
+        Sync.defer:
+          if rs.hasMorePages() then Async.fromCompletionStage(rs.fetchNextPage()).map(go)
           else ()
 
       if rs.remaining() > 0 then
         val chunk: Chunk[Row] = Chunk.from(rs.currentPage().asScala)
-        Emit.value(chunk).andThen(next)
+        Emit.valueWith(chunk)(next)
       else next
 
-    Stream[Row, Async](Fiber.fromCompletionStage(session.executeAsync(query)).map(go))
+    Stream[Row, Async](Async.fromCompletionStage(session.executeAsync(query)).map(go))
 
   private def fetchSinglePage[A](
     q: CQLType.Query[A],
@@ -118,7 +118,7 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
     attr: ExecutionAttributes = ExecutionAttributes.default
   ): BatchableStatement[?] < Async =
     val (queryString, bindMarkers) = CqlStatementRenderer.render(in)
-    if bindMarkers.isEmpty then IO(SimpleStatement.newInstance(queryString))
+    if bindMarkers.isEmpty then Sync.defer(SimpleStatement.newInstance(queryString))
     else buildStatement(queryString, bindMarkers, attr)
 
   private def buildStatement(
@@ -148,7 +148,7 @@ final private[virgil] class CQLExecutorKyo(private val session: CqlSession) exte
       else currentRows -> None
 
   private def prepare(query: String): PreparedStatement < Async =
-    Fiber.fromCompletionStage(session.prepareAsync(query))
+    Async.fromCompletionStage(session.prepareAsync(query))
 
   private def executeAction(query: Statement[?]): AsyncResultSet < Async =
-    Fiber.fromCompletionStage(session.executeAsync(query))
+    Async.fromCompletionStage(session.executeAsync(query))

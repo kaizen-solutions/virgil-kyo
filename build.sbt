@@ -1,5 +1,5 @@
 inThisBuild {
-  val scala3 = "3.7.0"
+  val scala3 = "3.7.1"
 
   List(
     scalaVersion       := scala3,
@@ -64,7 +64,7 @@ lazy val root =
     .settings(
       name := "virgil-kyo",
       libraryDependencies ++= Seq(
-        "io.getkyo"           %% "kyo-core"    % "0.19.0",
+        "io.getkyo"           %% "kyo-core"    % "1.0-RC1",
         "io.kaizen-solutions" %% "virgil-core" % "1.2.3"
       )
     )

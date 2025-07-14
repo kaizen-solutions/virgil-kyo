@@ -17,13 +17,16 @@ trait CQLExecutor:
   def metrics: DriverMetrics < Abort[Absent]
 
 object CQLExecutor:
-  def apply(builder: => CqlSessionBuilder): CQLExecutor < (Resource & Async) =
-    val acquire: CqlSession < Async = Fiber.fromCompletionStage(builder.buildAsync())
-    val release: CqlSession => Unit < Async = (session: CqlSession) =>
-      Fiber.fromCompletionStage(session.closeAsync()).unit
-    Resource.acquireRelease(acquire)(release).map(CQLExecutorKyo(_))
+  def apply(builder: => CqlSessionBuilder): CQLExecutor < (Scope & Async) =
+    val acquire: CqlSession < Async =
+      Async.fromCompletionStage(builder.buildAsync())
 
-  val layer: Layer[CQLExecutor, Resource & Async & Env[CqlSessionBuilder]] = Layer {
+    val release: CqlSession => Unit < Async = (session: CqlSession) =>
+      Async.fromCompletionStage(session.closeAsync()).unit
+
+    Scope.acquireRelease(acquire)(release).map(CQLExecutorKyo(_))
+
+  val layer: Layer[CQLExecutor, Scope & Async & Env[CqlSessionBuilder]] = Layer {
     Env.use[CqlSessionBuilder](CQLExecutor(_))
   }
 
